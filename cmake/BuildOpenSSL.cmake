@@ -168,11 +168,17 @@ else()
         set(CROSS_SYSROOT ${CMAKE_CURRENT_BINARY_DIR}/sysroot/)
         set(AS ${CMAKE_ASM_COMPILER})
         set(AR ${CMAKE_AR})
+        set(RANLIB ${CMAKE_RANLIB})
         set(LD ${CMAKE_LINKER})
         set(LDFLAGS ${CMAKE_MODULE_LINKER_FLAGS})
+
+        ## only add CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN if it has a value
+        if (CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN)
+            set(CFLAGS "${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN}${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN} ${CFLAGS}")
+        endif()
         
-        # have to surround variables with double quotes, otherwise they will be merged together without any separator
-        set(CC "${CMAKE_C_COMPILER} ${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN}${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN} ${CFLAGS} -target ${CMAKE_C_COMPILER_TARGET}")
+        ## have to surround variables with double quotes, otherwise they will be merged together without any separator
+        set(CC "${CMAKE_C_COMPILER} ${CFLAGS} -target ${CMAKE_C_COMPILER_TARGET}")
         
         set(COMMAND_CONFIGURE ./Configure ${ANDROID_STRING}-${OPENSSL_PLATFORM} ${CONFIGURE_OPENSSL_PARAMS} ${CONFIGURE_OPENSSL_MODULES})
         set(COMMAND_TEST "true")
