@@ -75,6 +75,9 @@ if os_s == "LINUX_CROSS_ANDROID":
         else:
             env[k] = v.replace('"', '')+":"+env[k]
 
+    # openssl wants to find the C compiler (clang) on the path
+    env["PATH"] = env["ANDROID_TOOLCHAIN_ROOT"] + "/bin:" + env["PATH"]
+
 proc = None
 if os_s == "WIN32":
     # we must emulate a UNIX environment to build openssl using mingw

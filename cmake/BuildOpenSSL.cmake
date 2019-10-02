@@ -106,7 +106,7 @@ else()
     set(BUILD_ENV_TOOL ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/building_env.py ${OS} ${MSYS_BASH} ${MINGW_MAKE})
 
     # no-dsa no-rc2 no-des break tests, therefore we need them
-    set(CONFIGURE_OPENSSL_MODULES no-cast no-md2 no-md4 no-mdc2 no-rc4 no-rc5 no-engine no-idea no-mdc2 no-rc5 no-camellia no-ssl3 no-heartbeats no-gost no-deprecated no-capieng no-comp no-dtls no-psk no-srp no-dso)
+    set(CONFIGURE_OPENSSL_MODULES no-shared no-cast no-md2 no-md4 no-mdc2 no-rc4 no-rc5 no-engine no-idea no-mdc2 no-rc5 no-camellia no-ssl3 no-heartbeats no-gost no-deprecated no-capieng no-comp no-dtls no-psk no-srp no-dso)
 
     # additional configure script parameters
     set(CONFIGURE_OPENSSL_PARAMS --api=1.1.0 --libdir=lib)
@@ -136,6 +136,12 @@ else()
         # silence warnings about unused arguments (Clang specific)
         set(CFLAGS "${CFLAGS} -Qunused-arguments")
         set(CXXFLAGS "${CXXFLAGS} -Qunused-arguments")
+
+        # remove -mthumb as it doesn't work in 1.1.1 series
+        # there may be a more "CMake-y" way to do this
+        # see https://github.com/openssl/openssl/issues/7878
+        string(REPLACE "-mthumb" "" CFLAGS ${CFLAGS})
+        string(REPLACE "-mthumb" "" CXXFLAGS ${CXXFLAGS})
     
         # required environment configuration is already set (by e.g. ndk) so no need to fiddle around with all the OpenSSL options ...
         if (NOT ANDROID)
@@ -143,43 +149,49 @@ else()
         endif()
         
         if (ARMEABI_V7A)
-            set(OPENSSL_PLATFORM "armeabi")
-            set(CONFIGURE_OPENSSL_PARAMS ${CONFIGURE_OPENSSL_PARAMS} "-march=armv7-a")
+            set(OPENSSL_PLATFORM "arm")
+            #set(CONFIGURE_OPENSSL_PARAMS ${CONFIGURE_OPENSSL_PARAMS} "-march=armv7-a")
         else()
             if (CMAKE_ANDROID_ARCH_ABI MATCHES "arm64-v8a")
-                set(OPENSSL_PLATFORM "aarch64")
+                set(OPENSSL_PLATFORM "arm64")
             else()
                 set(OPENSSL_PLATFORM ${CMAKE_ANDROID_ARCH_ABI})
             endif()
         endif()
         
         set(ANDROID_STRING "android")
-        if (CMAKE_ANDROID_ARCH_ABI MATCHES "64")
-            set(ANDROID_STRING "${ANDROID_STRING}64")
-        endif()
+
+        # this doesn't seem to be necessary for 1.1.1
+        ## copy over both sysroots to a common sysroot (workaround OpenSSL failing without one single sysroot)
+        #string(REPLACE "-clang" "" ANDROID_TOOLCHAIN_NAME ${ANDROID_TOOLCHAIN_NAME})
+        #file(COPY ${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}/${ANDROID_PLATFORM_LEVEL}/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/lib/)
+        #file(COPY ${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/lib/ PATTERN *.*)
+        #file(COPY ${CMAKE_SYSROOT}/usr/include DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/)
         
-        # copy over both sysroots to a common sysroot (workaround OpenSSL failing without one single sysroot)
-        string(REPLACE "-clang" "" ANDROID_TOOLCHAIN_NAME ${ANDROID_TOOLCHAIN_NAME})
-        file(COPY ${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}/${ANDROID_PLATFORM_LEVEL}/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/lib/)
-        file(COPY ${ANDROID_TOOLCHAIN_ROOT}/sysroot/usr/lib/${ANDROID_TOOLCHAIN_NAME}/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/lib/ PATTERN *.*)
-        file(COPY ${CMAKE_SYSROOT}/usr/include DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/sysroot/usr/)
-        
+        # this doesn't seem to be necessary for 1.1.1
         # ... but we have to convert all the CMake options to environment variables!
-        set(CROSS_SYSROOT ${CMAKE_CURRENT_BINARY_DIR}/sysroot/)
+        #set(CROSS_SYSROOT ${CMAKE_CURRENT_BINARY_DIR}/sysroot/)
+        
         set(AS ${CMAKE_ASM_COMPILER})
         set(AR ${CMAKE_AR})
         set(RANLIB ${CMAKE_RANLIB})
         set(LD ${CMAKE_LINKER})
         set(LDFLAGS ${CMAKE_MODULE_LINKER_FLAGS})
 
+        # doesn't seem to be necessary
         ## only add CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN if it has a value
-        if (CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN)
-            set(CFLAGS "${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN}${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN} ${CFLAGS}")
-        endif()
+        #if (CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN)
+        #    set(CFLAGS "${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN}${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN} ${CFLAGS}")
+        #endif()
         
+        # this doesn't seem to be necessary for 1.1.1
         ## have to surround variables with double quotes, otherwise they will be merged together without any separator
-        set(CC "${CMAKE_C_COMPILER} ${CFLAGS} -target ${CMAKE_C_COMPILER_TARGET}")
+        #set(CC "${CMAKE_C_COMPILER} ${CFLAGS} -target ${CMAKE_C_COMPILER_TARGET}")
         
+        #set(CC "${CMAKE_C_COMPILER}")
+        #set(CC "clang")
+        set(CC "${ANDROID_TOOLCHAIN}")  # this should resolve to "clang"
+
         set(COMMAND_CONFIGURE ./Configure ${ANDROID_STRING}-${OPENSSL_PLATFORM} ${CONFIGURE_OPENSSL_PARAMS} ${CONFIGURE_OPENSSL_MODULES})
         set(COMMAND_TEST "true")
     else()                   # detect host system automatically
@@ -189,13 +201,15 @@ else()
 
     # add openssl target
     ExternalProject_Add(openssl
-        URL https://mirror.viaduck.org/openssl/openssl-${OPENSSL_BUILD_VERSION}.tar.gz
+        URL https://www.openssl.org/source/openssl-${OPENSSL_BUILD_VERSION}.tar.gz
         ${OPENSSL_CHECK_HASH}
         UPDATE_COMMAND ""
 
         CONFIGURE_COMMAND ${BUILD_ENV_TOOL} <SOURCE_DIR> ${COMMAND_CONFIGURE}
-        PATCH_COMMAND ${PATCH_PROGRAM} -p1 --forward -r - < ${CMAKE_CURRENT_SOURCE_DIR}/patches/openssl-android-clang.patch || true
-        COMMAND ${PATCH_PROGRAM} -p1 --forward -r - < ${CMAKE_CURRENT_SOURCE_DIR}/patches/0001-Configurations-10-main.conf-add-android64-x86_64-tar.patch || true
+
+        # this doesn't seem to be necessary for 1.1.1
+        #PATCH_COMMAND ${PATCH_PROGRAM} -p1 --forward -r - < ${CMAKE_CURRENT_SOURCE_DIR}/patches/openssl-android-clang.patch || true
+        #COMMAND ${PATCH_PROGRAM} -p1 --forward -r - < ${CMAKE_CURRENT_SOURCE_DIR}/patches/0001-Configurations-10-main.conf-add-android64-x86_64-tar.patch || true
 
         BUILD_COMMAND ${BUILD_ENV_TOOL} <SOURCE_DIR> ${MAKE_PROGRAM} -j ${NUM_JOBS}
         BUILD_BYPRODUCTS ${OPENSSL_LIBSSL_PATH} ${OPENSSL_LIBCRYPTO_PATH}
